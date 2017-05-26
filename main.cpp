@@ -10,30 +10,84 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
 using namespace std;
+
+//- Begin Point
+class Garage;
+
+class Point {
+	private:
+		friend Garage;
+		int i, j; // 行、列
+		static int w, h; // 宽高<100
+	public:
+		Point() = default;
+		Point(int i, int j): i(i), j(j) {}
+		explicit Point(int pos) {
+			i = pos / w;
+			j = pos % w;
+		}
+		explicit operator int() {
+			return i * w + j;
+		}
+
+		bool operator==(const Point& b) const {
+			return i == b.i && j == b.j;
+		}
+		void show() {
+			printf("(%d, %d)\n", i, j);
+		}
+};
+int Point::w = 0;
+int Point::h = 0;
+
+//- End Point
 
 //- Begin Garage
 class Garage {
 	private:
 		int k, p, a, b; // 能耗系数k 罚时系数p 泊车机器人系数a 客户停车等待系数b
-		int w, h; // 宽高<100
+		static int w, h; // 宽高<100
 		enum class mapType: char { // P表示车位，B表示障碍物，I表示入口，E表示出口，X表示过道
-			P, B, I, E, X
+			P = 'P', B = 'B', I = 'I',
+			E = 'E', X = 'X'
 		};
-		mapType map[105][105];
+		mapType Map[105][105];
+		friend class Point;
 	public:
+		Point start, end;
+		vector<Point> parks;
 		void loadData();
 		void showData();
 };
+int Garage::w = 0;
+int Garage::h = 0;
 
 void Garage::loadData() {
 	scanf("%d%d%d%d", &k, &p, &a, &b);
 	scanf("%d%d", &h, &w); // 官方把h, w搞反了= =
+	Point::h = h;
+	Point::w = w;
+
 	char c[2];
 	for (int i = 0; i < h; ++i) {
 		for (int j = 0; j < w; ++j) {
 			scanf("%s", c);
-			map[i][j] = static_cast<mapType>(c[0]);
+			Map[i][j] = static_cast<mapType>(c[0]);
+			switch(Map[i][j]) {
+				case mapType::I:
+					start = Point(i, j);
+					break;
+				case mapType::E:
+					end = Point(i, j);
+					break;
+				case mapType::P:
+					parks.push_back(Point(i, j));
+					break;
+				default:
+					break;
+			}
 		}
 	}
 }
@@ -45,7 +99,7 @@ void Garage::showData() {
 	printf("w = %d h = %d\n", w, h);
 	for (int i = 0; i < h; ++i) {
 		for (int j = 0; j < w; ++j)
-			printf("%c ", static_cast<char>(map[i][j]));
+			printf("%c ", static_cast<char>(Map[i][j]));
 		puts("");
 	}
 }
@@ -94,12 +148,17 @@ void carShowData() {
 
 
 int main(void) {
+#ifdef netcanMachine
 	freopen("cases/1.txt", "r", stdin);
+#endif
 	garage.loadData();
 	carLoadData();
 
 	garage.showData();
+	garage.start.show();
+	garage.end.show();
 	carShowData();
+
 
 	return 0;
 }
