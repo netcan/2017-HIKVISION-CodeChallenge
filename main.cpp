@@ -10,33 +10,35 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <queue>
 #include <unordered_map>
 using namespace std;
 
 //- Begin Point
 class Garage;
+using Pos = int;
 
-class Point {
-	private:
-		friend Garage;
+struct Point {
+		friend class Garage;
 		int i, j; // 行、列
 		static int w, h; // 宽高<100
-	public:
+		bool connectStart = false, connectEnd = false; // 是否和起点/终点联通
+
 		Point() = default;
 		Point(int i, int j): i(i), j(j) {}
-		explicit Point(int pos) {
+		explicit Point(Pos pos) { // 数字转坐标
 			i = pos / w;
 			j = pos % w;
 		}
-		explicit operator int() {
+		explicit operator Pos() const { // 坐标转数字
 			return i * w + j;
 		}
 
 		bool operator==(const Point& b) const {
 			return i == b.i && j == b.j;
 		}
-		void show() {
-			printf("(%d, %d)\n", i, j);
+		void show() const {
+			printf("(%d,%d)", i, j);
 		}
 };
 int Point::w = 0;
@@ -54,15 +56,100 @@ class Garage {
 			E = 'E', X = 'X'
 		};
 		mapType Map[105][105];
-		friend class Point;
+		friend struct Point;
+		bool getPath(const Point & in);
 	public:
 		Point start, end;
-		vector<Point> parks;
+		unordered_map<Pos, vector<Pos>> startToPark; // 存放从起点到所有停车位的路径
+		unordered_map<Pos, vector<Pos>> parkToEnd; // 存放所有停车位到终点的路径
+
+		bool checkMap();
+		vector<Point> parks; // 所有停车位
 		void loadData();
 		void showData();
 };
 int Garage::w = 0;
 int Garage::h = 0;
+
+bool Garage::getPath(const Point &in) {
+	int di[] = {0, -1, 0, 1};
+	int dj[] = {1, 0, -1, 0};
+	unordered_map<Pos, bool> visited; // 记录到达的点
+	unordered_map<Pos, Pos> path; // 记录所有路径
+	queue<Point> que;
+
+	que.push(in); // 起点
+	path[Pos(in)] = -1;
+	visited[Pos(in)] = true;
+
+	while(! que.empty()) {
+		Point cur = que.front(); que.pop();
+		if(Map[cur.i][cur.j] == mapType::P) continue; // 到达停车位
+
+		for(size_t k = 0; k < sizeof(di) / sizeof(int); ++k) {
+			int ni = cur.i + di[k], nj = cur.j + dj[k];
+			if(ni >= 0 && ni < h && nj >= 0 && nj < w &&
+					Map[ni][nj] != mapType::B) { // 不越界 && 不是障碍物
+				Point next(ni, nj);
+				if(! visited[Pos(next)]) { // 状态转移
+					visited[Pos(next)] = true;
+					path[Pos(next)] = Pos(cur); // 保存路径
+					que.push(next);
+				}
+			}
+		}
+	}
+
+	// 获取路径
+	for(size_t i = 0; i < parks.size(); ++i) {
+		Pos t = path[Pos(parks[i])];
+		do {
+			if(in == start) startToPark[Pos(parks[i])].push_back(t);
+			else parkToEnd[Pos(parks[i])].push_back(t);
+
+			if(! path.count(t)) return false; // 未找到路径
+		} while( (t = path[t]) != -1 && path[t] != -1);
+		if(in == start)
+			reverse(startToPark[Pos(parks[i])].begin(),
+					startToPark[Pos(parks[i])].end());
+	}
+
+	return true;
+}
+
+bool Garage::checkMap() {
+	if(getPath(start) && getPath(end)) {
+		/*
+		puts("start to parks");
+		for(size_t i = 0; i < parks.size(); ++i) {
+			start.show();
+			for(const auto &t: startToPark[Pos(parks[i])]) {
+				printf("->");
+				Point(t).show();
+			}
+			printf("->");
+			parks[i].show();
+			puts("");
+		}
+
+		puts("parks to end");
+		for(size_t i = 0; i < parks.size(); ++i) {
+			parks[i].show();
+			for(const auto &t: parkToEnd[Pos(parks[i])]) {
+				printf("->");
+				Point(t).show();
+			}
+			printf("->");
+			end.show();
+			puts("");
+		}
+		*/
+		return true;
+	}
+
+
+	return false;
+}
 
 void Garage::loadData() {
 	scanf("%d%d%d%d", &k, &p, &a, &b);
@@ -158,7 +245,9 @@ int main(void) {
 	garage.start.show();
 	garage.end.show();
 	carShowData();
-
+	if(!garage.checkMap()) {
+		puts("NO"); return 0;
+	} else puts("YES");
 
 	return 0;
 }
