@@ -1,4 +1,5 @@
 /main
+cases/*.out
 cases/Demo.exe
 cases/QtCore4.dll
 cases/QtGui4.dll
