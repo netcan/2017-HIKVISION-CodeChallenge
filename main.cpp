@@ -127,7 +127,7 @@ void Garage::run() {
 		return;
 	} else puts("YES");
 
-	int botNum = 1;
+	int botNum = 2;
 	pair<int, int> ans = schedule(botNum);
 	printf("%d %d %d\n", botNum, ans.first, ans.second);
 
@@ -332,9 +332,12 @@ bool Garage::getPath(const Point &in) {
 
 	// 获取路径
 	for(size_t i = 0; i < parks.size(); ++i) {
+		if(! path.count(Pos(parks[i]))) return false;
 		Pos t = path[Pos(parks[i])];
 		do {
-			if(in == start) startToPark[Pos(parks[i])].push_back(t);
+			if(in == start) {
+				startToPark[Pos(parks[i])].push_back(t);
+			}
 			else parkToEnd[Pos(parks[i])].push_back(t);
 
 			if(! path.count(t)) return false; // 未找到路径
@@ -348,8 +351,37 @@ bool Garage::getPath(const Point &in) {
 }
 
 bool Garage::checkMap() {
+	// 出口和入口各只有一个，且不重合，分布在地图边缘，泊车机器人从入口和出口都能到达每个车位。
+	if( (start.i != 0 && start.i != h - 1 && start.j != 0 && start.j != w - 1) ||
+			(end.i != 0 && end.i != h - 1 && end.j != 0 && end.j != w - 1)
+	  ) return false;
+
+	int ic = 0, ec = 0;
+	for (int i = 0; i < h; ++i) {
+		for (int j = 0; j < w; ++j) {
+			if(Map[i][j] == mapType::I) ++ic;
+			else if(Map[i][j] == mapType::E) ++ec;
+			if(ic > 1 || ec > 1) return false;
+		}
+	}
+
+	// 每个车位有且只有一个入口, 即每个红色区域旁边有且只有一个白色区域；
+	int di[] = {0, -1, 0, 1};
+	int dj[] = {1, 0, -1, 0};
+	for(const Point &p: parks) {
+		int xc = 0;
+		for(size_t k = 0; k < sizeof(di) / sizeof(int); ++k) {
+			int ni = p.i + di[k], nj = p.j + dj[k];
+			if(ni >= 0 && ni < h && nj >= 0 && nj < w && Map[ni][nj] == mapType::X)
+				++xc;
+			if(xc > 1) return false;
+		}
+	}
+
+	// 泊车机器人必须能到达每个车位
 	if(getPath(start) && getPath(end)) {
 		startToEnd = getPath(start, end);
+		// printf("sesize: %ld\n", startToEnd.size());
 		/*
 		printf("======path========\n");
 		start.show();

@@ -5,6 +5,14 @@ test: main
 	for i in $$(ls cases/*.txt); \
     do\
 		echo "testing " $$i "...";\
-        ./main $$i > "$$(echo $$i | sed -r 's/(.*)\.txt/\1result\.out/')";\
-		wine cases/fastDemo.exe $$i "$$(echo $$i | sed -r 's/(.*)\.txt/\1result\.out/')";\
+        ./main $$i > "$$(echo $$i | sed -r 's/(.*)\.txt/\1\.out/')";\
+		wine cases/fastDemo.exe $$i "$$(echo $$i | sed -r 's/(.*)\.txt/\1\.out/')";\
+	done
+
+test100: main
+	for i in $$(ls cases100/*.txt); \
+    do\
+		echo "testing " $$i "...";\
+        ./main $$i > "$$(echo $$i | sed -r 's/(.*)\.txt/\1\.out/')";\
+		wine cases/fastDemo.exe $$i "$$(echo $$i | sed -r 's/(.*)\.txt/\1\.out/')";\
 	done
