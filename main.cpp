@@ -9,20 +9,64 @@
 #include <cstdio>
 #include <iostream>
 #include <vector>
+#include <cstring>
 #include <algorithm>
 #include <queue>
 #include <unordered_map>
 using namespace std;
 
-//- Begin Point
-class Garage;
 using Pos = int;
+class Point;
+
+//- Begin Car
+class Car {
+	private:
+		int id; // ID
+		int tIn, tOut; // 申请进入时间点，申请离开时间点
+		int t, m; // 最大等待时间，质量
+		Pos park; // 停车点
+		int realTIn = -1, realTOut = -1, inBot = -1, outBot = -1;
+	public:
+		friend class Garage;
+		Car(int id, int tIn, int tOut, int t, int m):
+			id(id), tIn(tIn), tOut(tOut), t(t), m(m) {}
+		void showData() {
+			printf("id = %d tIn = %d/%d tOut = %d/%d t = %d m = %d\n", id, tIn, realTIn, tOut, realTOut, t, m);
+			printf("park = %d inBot = %d outBot = %d\n", realTIn, realTOut, park);
+		}
+		bool operator<(const Car& b) const {
+			if(tIn == b.tIn) return tOut < b.tOut;
+			return tIn < b.tIn;
+		}
+};
+
+vector<Car> cars; // 汽车
+
+void carLoadData() {
+	int N; // 车辆数目N
+	scanf("%d", &N);
+	int id, tIn, tOut, t, m;
+	for (int i = 0; i < N; ++i) {
+		scanf("%d%d%d%d%d", &id, &tIn, &tOut, &t, &m);
+		cars.push_back(Car(id, tIn, tOut, t, m));
+	}
+
+	sort(cars.begin(), cars.end());
+}
+
+void carShowData() {
+	printf("车辆数目N = %ld\n", cars.size());
+	for (size_t i = 0; i < cars.size(); ++i)
+		cars[i].showData();
+}
+//- EndCar
+
+//- Begin Point
 
 struct Point {
 		friend class Garage;
 		int i, j; // 行、列
 		static int w, h; // 宽高<100
-		bool connectStart = false, connectEnd = false; // 是否和起点/终点联通
 
 		Point() = default;
 		Point(int i, int j): i(i), j(j) {}
@@ -58,18 +102,143 @@ class Garage {
 		mapType Map[105][105];
 		friend struct Point;
 		bool getPath(const Point & in);
+		vector<Pos> getPath(const Point &s, const Point &e); // 获得起点到终点的最短路
 	public:
 		Point start, end;
 		unordered_map<Pos, vector<Pos>> startToPark; // 存放从起点到所有停车位的路径
 		unordered_map<Pos, vector<Pos>> parkToEnd; // 存放所有停车位到终点的路径
+		vector<Pos> startToEnd;
 
-		bool checkMap();
+		bool checkMap(); // 判断地图是否合法
+		void schedule(int botNum); // 调度算法(机器人数量)， Z=a*n+T+W, min Z
 		vector<Point> parks; // 所有停车位
 		void loadData();
 		void showData();
 };
 int Garage::w = 0;
 int Garage::h = 0;
+
+void Garage::schedule(int botNum) { // 核心算法，调度
+	using bot = pair<int, int>; // time, id
+	using car = pair<int, int>; // 取车time, id
+
+	int T = 0; // 时间
+	queue<int> idleBot; // 入口处空闲机器人队列
+	queue<Pos> idlePark; // 空闲停车场
+	priority_queue<bot, vector<bot>, greater<bot>> busyBot;
+	priority_queue<car, vector<bot>, greater<car>> takeAway; // 取车队列
+
+	for (int i = 0; i < botNum; ++i) idleBot.push(i); // 入口处空闲机器人队列
+	for (size_t i = 0; i < parks.size(); ++i) idlePark.push(Pos(parks[i]));
+
+	size_t carIdx = 0; // 处理到的汽车
+	while(carIdx < cars.size()) {
+		Car &curCar = cars[carIdx];
+
+		// 处理停车
+		if(T >= curCar.tIn && T <= curCar.tIn + curCar.t) { // 当前车辆
+			if(! idleBot.empty()) { // 入口处有空闲机器人
+				int botId = idleBot.front(); idleBot.pop();
+				Pos park = idlePark.front(); idlePark.pop();
+				busyBot.push(make_pair(T + (startToPark[park].size() + 1)*2 , botId)); // 来回路程*2
+				takeAway.push(make_pair(curCar.tOut, carIdx)); // 取车队列
+
+				curCar.park = park;
+				curCar.realTIn = T;
+				curCar.inBot = botId;
+				++carIdx; // 处理下一辆车
+			}
+		} else if(T > curCar.tIn + curCar.t) {
+			++carIdx; // 处理下一辆车
+		}
+
+		// 检查繁忙机器人
+		if(!busyBot.empty() && T >= busyBot.top().first) {
+			int botId = busyBot.top().second; busyBot.pop();
+			idleBot.push(botId); // 回到起点
+		}
+
+		// 取车
+		if(! takeAway.empty() && T >= takeAway.top().first) {
+			if(! idleBot.empty()) { // 入口处有空闲机器人
+				int curId = takeAway.top().second; takeAway.pop();
+				int botId = idleBot.front(); idleBot.pop();
+				Car & tcar = cars[curId];
+				Pos park = tcar.park;
+				busyBot.push(make_pair(startToPark[park].size() + parkToEnd[park].size() + startToEnd.size() + 3 , botId)); // 运到出口，然后回来
+
+				tcar.realTOut = T + startToPark[park].size() + parkToEnd[park].size() + 2;
+				tcar.outBot = botId;
+			}
+		}
+
+		++T;
+	}
+
+	while(! takeAway.empty()) { // 取走剩余车辆
+		// 检查繁忙机器人
+		if(!busyBot.empty() && T >= busyBot.top().first) {
+			int botId = busyBot.top().second; busyBot.pop();
+			idleBot.push(botId); // 回到起点
+		}
+
+		// 取车
+		if(T >= takeAway.top().first) {
+			if(! idleBot.empty()) { // 入口处有空闲机器人
+				int curId = takeAway.top().second; takeAway.pop();
+				int botId = idleBot.front(); idleBot.pop();
+				Car & tcar = cars[curId];
+				Pos park = tcar.park;
+				busyBot.push(make_pair(startToPark[park].size() + parkToEnd[park].size() + startToEnd.size() + 3 , botId)); // 运到出口，然后回来
+
+				tcar.realTOut = T + startToPark[park].size() + parkToEnd[park].size() + 2;
+				tcar.outBot = botId;
+			}
+		}
+		++T;
+	}
+}
+
+vector<Pos> Garage::getPath(const Point &s, const Point &e) {
+	int di[] = {0, -1, 0, 1};
+	int dj[] = {1, 0, -1, 0};
+	unordered_map<Pos, bool> visited; // 记录到达的点
+	unordered_map<Pos, Pos> path; // 记录所有路径
+	queue<Point> que;
+
+	que.push(s); // 起点
+	path[Pos(s)] = -1;
+	visited[Pos(s)] = true;
+
+	// BFS
+	while(! que.empty()) {
+		Point cur = que.front(); que.pop();
+		if(cur == e) break; // 到达终点
+
+		for(size_t k = 0; k < sizeof(di) / sizeof(int); ++k) {
+			int ni = cur.i + di[k], nj = cur.j + dj[k];
+			if(ni >= 0 && ni < h && nj >= 0 && nj < w &&
+					Map[ni][nj] != mapType::B && Map[ni][nj] != mapType::P) { // 不越界 && 不是障碍物
+				Point next(ni, nj);
+				if(! visited[Pos(next)]) { // 状态转移
+					visited[Pos(next)] = true;
+					path[Pos(next)] = Pos(cur); // 保存路径
+					que.push(next);
+				}
+			}
+		}
+	}
+
+	vector<Pos> ret;
+	// 获取路径
+	Pos t = path[Pos(e)];
+	do {
+		ret.push_back(t);
+		if(! path.count(t)) return {}; // 未找到路径
+	} while( (t = path[t]) != -1 && path[t] != -1);
+	reverse(ret.begin(), ret.end()); // 反转
+	return ret;
+}
 
 bool Garage::getPath(const Point &in) {
 	int di[] = {0, -1, 0, 1};
@@ -82,6 +251,7 @@ bool Garage::getPath(const Point &in) {
 	path[Pos(in)] = -1;
 	visited[Pos(in)] = true;
 
+	// BFS
 	while(! que.empty()) {
 		Point cur = que.front(); que.pop();
 		if(Map[cur.i][cur.j] == mapType::P) continue; // 到达停车位
@@ -119,7 +289,17 @@ bool Garage::getPath(const Point &in) {
 
 bool Garage::checkMap() {
 	if(getPath(start) && getPath(end)) {
+		startToEnd = getPath(start, end);
 		/*
+		printf("======path========\n");
+		start.show();
+		printf("->");
+		for(auto pos: startToEnd) {
+			Point(pos).show();
+			printf("->");
+		}
+		end.show();
+		puts("");
 		puts("start to parks");
 		for(size_t i = 0; i < parks.size(); ++i) {
 			start.show();
@@ -194,44 +374,6 @@ void Garage::showData() {
 Garage garage; // 只有一个车库
 //- End Garage
 
-//- Begin Car
-class Car {
-	private:
-		int id; // ID
-		int tIn, tOut; // 申请进入时间点，申请离开时间点
-		int t, m; // 最大等待时间，质量
-	public:
-		Car(int id, int tIn, int tOut, int t, int m):
-			id(id), tIn(tIn), tOut(tOut), t(t), m(m) {}
-		void showData() {
-			printf("%d %d %d %d %d\n", id, tIn, tOut, t, m);
-		}
-		bool operator<(const Car& b) const {
-			if(tIn == b.tIn) return tOut < b.tOut;
-			return tIn < b.tIn;
-		}
-};
-
-vector<Car> cars; // 汽车
-
-void carLoadData() {
-	int N; // 车辆数目N
-	scanf("%d", &N);
-	int id, tIn, tOut, t, m;
-	for (int i = 0; i < N; ++i) {
-		scanf("%d%d%d%d%d", &id, &tIn, &tOut, &t, &m);
-		cars.push_back(Car(id, tIn, tOut, t, m));
-	}
-
-	sort(cars.begin(), cars.end());
-}
-
-void carShowData() {
-	printf("车辆数目N = %ld\n", cars.size());
-	for (size_t i = 0; i < cars.size(); ++i)
-		cars[i].showData();
-}
-//- EndCar
 
 
 int main(void) {
@@ -244,10 +386,11 @@ int main(void) {
 	garage.showData();
 	garage.start.show();
 	garage.end.show();
-	carShowData();
 	if(!garage.checkMap()) {
 		puts("NO"); return 0;
 	} else puts("YES");
+	garage.schedule(1);
 
+	carShowData();
 	return 0;
 }
