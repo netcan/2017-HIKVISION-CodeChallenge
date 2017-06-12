@@ -4,8 +4,8 @@ X X X X X X
 X B P P P P
 X X B B B B
 X X X X X E
-X X X X X X
-I B P P B B
+I X X X X X
+X B P P B B
 4
 1 0 50 20 10
 2 3 45 15 15

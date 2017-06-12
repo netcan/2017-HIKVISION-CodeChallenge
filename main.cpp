@@ -16,7 +16,7 @@
 using namespace std;
 
 using Pos = int;
-class Point;
+struct Point;
 
 //- Begin Car
 class Car {
@@ -24,7 +24,7 @@ class Car {
 		int id; // ID
 		int tIn, tOut; // 申请进入时间点，申请离开时间点
 		int t, m; // 最大等待时间，质量
-		Pos park; // 停车点
+		Pos park = -1; // 停车点
 		int realTIn = -1, realTOut = -1, inBot = -1, outBot = -1;
 	public:
 		friend class Garage;
@@ -56,8 +56,10 @@ void carLoadData() {
 
 void carShowData() {
 	printf("车辆数目N = %ld\n", cars.size());
-	for (size_t i = 0; i < cars.size(); ++i)
+	for (size_t i = 0; i < cars.size(); ++i) {
+		puts("=====================");
 		cars[i].showData();
+	}
 }
 //- EndCar
 
@@ -110,15 +112,58 @@ class Garage {
 		vector<Pos> startToEnd;
 
 		bool checkMap(); // 判断地图是否合法
-		void schedule(int botNum); // 调度算法(机器人数量)， Z=a*n+T+W, min Z
+		pair<int, int> schedule(int botNum); // 调度算法(机器人数量)， Z=a*n+T+W, min Z
 		vector<Point> parks; // 所有停车位
 		void loadData();
 		void showData();
+		void run();
 };
 int Garage::w = 0;
 int Garage::h = 0;
 
-void Garage::schedule(int botNum) { // 核心算法，调度
+void Garage::run() {
+	if(!checkMap()) {
+		puts("NO");
+		return;
+	} else puts("YES");
+
+	int botNum = 1;
+	pair<int, int> ans = schedule(botNum);
+	printf("%d %d %d\n", botNum, ans.first, ans.second);
+
+	vector<Car> carInfo = cars;
+	sort(carInfo.begin(), carInfo.end(), [](const Car &a , const Car &b) {
+			return a.id < b.id;
+		});
+	for(const auto &car: carInfo) {
+		printf("%d %s", car.id, car.park == -1?"yes\n":"no ");
+		if(car.park != -1) {
+			// 入库
+			printf("%d %d  ", car.inBot, car.realTIn);
+			start.show();
+			printf(" ");
+			for(auto pos: startToPark[car.park]) {
+				Point(pos).show();
+				printf(" ");
+			}
+			Point(car.park).show();
+			printf(" ");
+
+			// 出库
+			printf("%d %d ", car.outBot, car.realTOut);
+			Point(car.park).show();
+			printf(" ");
+			for(auto pos: parkToEnd[car.park]) {
+				Point(pos).show();
+				printf(" ");
+			}
+			end.show();
+			puts("");
+		}
+	}
+}
+
+pair<int,int> Garage::schedule(int botNum) { // 核心算法，调度，return <T,W>
 	using bot = pair<int, int>; // time, id
 	using car = pair<int, int>; // 取车time, id
 
@@ -127,6 +172,7 @@ void Garage::schedule(int botNum) { // 核心算法，调度
 	queue<Pos> idlePark; // 空闲停车场
 	priority_queue<bot, vector<bot>, greater<bot>> busyBot;
 	priority_queue<car, vector<bot>, greater<car>> takeAway; // 取车队列
+	pair<int, int> ret(0, 0); // T, W
 
 	for (int i = 0; i < botNum; ++i) idleBot.push(i); // 入口处空闲机器人队列
 	for (size_t i = 0; i < parks.size(); ++i) idlePark.push(Pos(parks[i]));
@@ -137,25 +183,33 @@ void Garage::schedule(int botNum) { // 核心算法，调度
 
 		// 处理停车
 		if(T >= curCar.tIn && T <= curCar.tIn + curCar.t) { // 当前车辆
-			if(! idleBot.empty()) { // 入口处有空闲机器人
+			if(! idleBot.empty() && !idlePark.empty()) { // 入口处有空闲机器人
 				int botId = idleBot.front(); idleBot.pop();
 				Pos park = idlePark.front(); idlePark.pop();
+
+				// printf("park: ");
+				// Point(park).show();
+				// puts("");
+
 				busyBot.push(make_pair(T + (startToPark[park].size() + 1)*2 , botId)); // 来回路程*2
 				takeAway.push(make_pair(curCar.tOut, carIdx)); // 取车队列
 
+				ret.second += k * curCar.m * (startToPark[park].size() + parkToEnd[park].size() + 2); // W
 				curCar.park = park;
 				curCar.realTIn = T;
 				curCar.inBot = botId;
 				++carIdx; // 处理下一辆车
 			}
-		} else if(T > curCar.tIn + curCar.t) {
+		} else if(T > curCar.tIn + curCar.t) { // 放弃接车
 			++carIdx; // 处理下一辆车
+			ret.first += p; // 罚时，T2
 		}
 
 		// 检查繁忙机器人
 		if(!busyBot.empty() && T >= busyBot.top().first) {
 			int botId = busyBot.top().second; busyBot.pop();
 			idleBot.push(botId); // 回到起点
+			continue;
 		}
 
 		// 取车
@@ -165,10 +219,12 @@ void Garage::schedule(int botNum) { // 核心算法，调度
 				int botId = idleBot.front(); idleBot.pop();
 				Car & tcar = cars[curId];
 				Pos park = tcar.park;
-				busyBot.push(make_pair(startToPark[park].size() + parkToEnd[park].size() + startToEnd.size() + 3 , botId)); // 运到出口，然后回来
+				idlePark.push(park);
+				busyBot.push(make_pair(T + startToPark[park].size() + parkToEnd[park].size() + startToEnd.size() + 3 , botId)); // 运到出口，然后回来
 
-				tcar.realTOut = T + startToPark[park].size() + parkToEnd[park].size() + 2;
 				tcar.outBot = botId;
+				tcar.realTOut = T + startToPark[park].size() + 1;
+				ret.first += b * ((tcar.realTIn - tcar.tIn) + (tcar.realTOut + parkToEnd[park].size() + 1 - tcar.tOut)); // T1
 			}
 		}
 
@@ -180,6 +236,7 @@ void Garage::schedule(int botNum) { // 核心算法，调度
 		if(!busyBot.empty() && T >= busyBot.top().first) {
 			int botId = busyBot.top().second; busyBot.pop();
 			idleBot.push(botId); // 回到起点
+			continue;
 		}
 
 		// 取车
@@ -189,14 +246,17 @@ void Garage::schedule(int botNum) { // 核心算法，调度
 				int botId = idleBot.front(); idleBot.pop();
 				Car & tcar = cars[curId];
 				Pos park = tcar.park;
-				busyBot.push(make_pair(startToPark[park].size() + parkToEnd[park].size() + startToEnd.size() + 3 , botId)); // 运到出口，然后回来
+				idlePark.push(park);
+				busyBot.push(make_pair(T + startToPark[park].size() + parkToEnd[park].size() + startToEnd.size() + 3 , botId)); // 运到出口，然后回来
 
-				tcar.realTOut = T + startToPark[park].size() + parkToEnd[park].size() + 2;
 				tcar.outBot = botId;
+				tcar.realTOut = T + startToPark[park].size() + 1;
+				ret.first += b * ((tcar.realTIn - tcar.tIn) + (tcar.realTOut + parkToEnd[park].size() + 1 - tcar.tOut)); // T1
 			}
 		}
 		++T;
 	}
+	return ret;
 }
 
 vector<Pos> Garage::getPath(const Point &s, const Point &e) {
@@ -362,7 +422,7 @@ void Garage::showData() {
 	printf("能耗系数k = %d\n", k);
 	printf("罚时系数p = %d\n", p);
 	printf("机器人系数a = %d\n", a);
-	printf("等待系数k = %d\n", b);
+	printf("等待系数b = %d\n", b);
 	printf("w = %d h = %d\n", w, h);
 	for (int i = 0; i < h; ++i) {
 		for (int j = 0; j < w; ++j)
@@ -376,21 +436,17 @@ Garage garage; // 只有一个车库
 
 
 
-int main(void) {
+int main(int argc, char **argv) {
 #ifdef netcanMachine
-	freopen("cases/1.txt", "r", stdin);
+	if(argc > 1) freopen(argv[1], "r", stdin);
+	else freopen("cases/1.txt", "r", stdin);
 #endif
 	garage.loadData();
 	carLoadData();
+	garage.run();
+	// garage.showData();
+	// carShowData();
 
-	garage.showData();
-	garage.start.show();
-	garage.end.show();
-	if(!garage.checkMap()) {
-		puts("NO"); return 0;
-	} else puts("YES");
-	garage.schedule(1);
 
-	carShowData();
 	return 0;
 }
