@@ -165,11 +165,17 @@ void Garage::run() {
 	pair<int, int> ans;
 	int bestBotNum = 0, Z = numeric_limits<int>::max();
 
-	for(size_t botNum = 0; botNum <= min(parks.size(), cars.size()); ++botNum) {
-		if(Z > schedule(botNum, ans)) {
-			Z = schedule(botNum, ans);
+	int tZ = 0; // minZ不变次数
+	int upperBotNum = min(parks.size(), cars.size());
+	for(int botNum = 0; tZ <= (upperBotNum >> 1) && botNum * a < Z && botNum <= upperBotNum; ++botNum) {
+		int curZ = schedule(botNum, ans);
+		if(Z > curZ) {
+			Z = curZ;
+			tZ = 0; // 归零
 			bestBotNum = botNum;
 		}
+		++tZ;
+		// printf("tz: %d\n", tZ);
 	}
 
 	// printf("minZ = %d\n", Z);
