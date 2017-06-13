@@ -163,9 +163,9 @@ void Garage::run() {
 	} else puts("YES");
 
 	pair<int, int> ans;
-	int bestBotNum = 1, Z = numeric_limits<int>::max();
+	int bestBotNum = 0, Z = numeric_limits<int>::max();
 
-	for(size_t botNum = 1; botNum <= min(parks.size(), cars.size()); ++botNum) {
+	for(size_t botNum = 0; botNum <= min(parks.size(), cars.size()); ++botNum) {
 		if(Z > schedule(botNum, ans)) {
 			Z = schedule(botNum, ans);
 			bestBotNum = botNum;
@@ -208,7 +208,7 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 	auto cmp = [this](const Pos &a, const Pos &b)->bool {
 		int distA = startToPark[Pos(a)].size() + parkToEnd[Pos(a)].size();
 		int distB = startToPark[Pos(b)].size() + parkToEnd[Pos(b)].size();
-		if(distA == distB) return startToPark[Pos(a)].size() > startToPark[Pos(b)].size();
+		if(distA == distB) return parkToEnd[Pos(a)].size() > parkToEnd[Pos(b)].size(); // 停车场到终点的距离越小越好
 		else return distA > distB;
 		return true;
 	};
@@ -227,10 +227,26 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 		Car &curCar = cars[carIdx];
 
 		// 接车，只有第一阶段才有
-		if(T >= curCar.tIn && T <= curCar.tIn + curCar.t) { // 当前车辆
+		if(T > curCar.tIn + curCar.t) { // 放弃接车
+			curCar.park = -1;
+			++carIdx; // 处理下一辆车
+			ret.first += p; // 罚时，T2
+			continue;
+		} else if(T >= curCar.tIn) { // 当前车辆
 			if(! idleBot.empty() && !idlePark.empty()) { // 入口处有空闲机器人
-				int botId = idleBot.front().id; idleBot.pop();
-				Pos park = idlePark.top(); idlePark.pop();
+				int botId = idleBot.front().id;
+				Pos park = idlePark.top();
+				if((unsigned)p <=
+						b * (T - curCar.tIn + parkToEnd[park].size()) +
+						k * curCar.m * (startToPark[park].size() + parkToEnd[park].size() + 2)) { // 剪枝
+					curCar.park = -1;
+					++carIdx; // 处理下一辆车
+					ret.first += p; // 罚时，T2
+					continue;
+				}
+				idleBot.pop();
+				idlePark.pop();
+
 
 				// printf("park: ");
 				// Point(park).show();
@@ -246,13 +262,7 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 				++carIdx; // 处理下一辆车
 				continue;
 			}
-		} else if(T > curCar.tIn + curCar.t) { // 放弃接车
-			curCar.park = -1;
-			++carIdx; // 处理下一辆车
-			ret.first += p; // 罚时，T2
-			continue;
 		}
-
 		// 检查繁忙机器人
 		if(!busyBot.empty() && T >= busyBot.top().time) {
 			int botId = busyBot.top().id;
