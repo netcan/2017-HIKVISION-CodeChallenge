@@ -1,5 +1,5 @@
 main: main.cpp
-	clang++ -DnetcanMachine -std=c++14 -g -lm $< -o $@
+	clang++ -DnetcanMachine -std=c++14 -O3 -lm $< -o $@
 
 test: main
 	for i in $$(ls cases/*.txt); \

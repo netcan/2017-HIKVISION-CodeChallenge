@@ -117,21 +117,13 @@ class Garage {
 		void loadData();
 		void showData();
 		void run();
+		void showSolution(int botNum, pair<int, int> &ans);
 };
 int Garage::w = 0;
 int Garage::h = 0;
 
-void Garage::run() {
-	if(!checkMap()) {
-		puts("NO");
-		return;
-	} else puts("YES");
-
-	int botNum = 4;
-	pair<int, int> ans;
-	int Z = schedule(botNum, ans);
+void Garage::showSolution(int botNum, pair<int, int> &ans) {
 	printf("%d %d %d\n", botNum, ans.first, ans.second);
-
 	vector<Car> carInfo = cars;
 	sort(carInfo.begin(), carInfo.end(), [](const Car &a , const Car &b) {
 			return a.id < b.id;
@@ -162,6 +154,27 @@ void Garage::run() {
 			puts("");
 		}
 	}
+}
+
+void Garage::run() {
+	if(!checkMap()) {
+		puts("NO");
+		return;
+	} else puts("YES");
+
+	pair<int, int> ans;
+	int bestBotNum = 1, Z = numeric_limits<int>::max();
+
+	for(size_t botNum = 1; botNum <= min(parks.size(), cars.size()); ++botNum) {
+		if(Z > schedule(botNum, ans)) {
+			Z = schedule(botNum, ans);
+			bestBotNum = botNum;
+		}
+	}
+
+	// printf("minZ = %d\n", Z);
+	schedule(bestBotNum, ans);
+	showSolution(bestBotNum, ans);
 }
 
 int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度，return Z
