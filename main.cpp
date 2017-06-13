@@ -112,7 +112,7 @@ class Garage {
 		vector<Pos> startToEnd;
 
 		bool checkMap(); // 判断地图是否合法
-		pair<int, int> schedule(int botNum); // 调度算法(机器人数量)， Z=a*n+T+W, min Z
+		int schedule(int botNum, pair<int, int> &ret); // 核心算法，调度，return Z
 		vector<Point> parks; // 所有停车位
 		void loadData();
 		void showData();
@@ -127,8 +127,9 @@ void Garage::run() {
 		return;
 	} else puts("YES");
 
-	int botNum = 2;
-	pair<int, int> ans = schedule(botNum);
+	int botNum = 4;
+	pair<int, int> ans;
+	int Z = schedule(botNum, ans);
 	printf("%d %d %d\n", botNum, ans.first, ans.second);
 
 	vector<Car> carInfo = cars;
@@ -163,35 +164,56 @@ void Garage::run() {
 	}
 }
 
-pair<int,int> Garage::schedule(int botNum) { // 核心算法，调度，return <T,W>
-	using bot = pair<int, int>; // time, id
+int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度，return Z
+	// using bot = pair<int, int>; // time, id
+	struct bot {
+		int time, id;
+		enum class stat {
+			GETIN, // 最终到达起点
+			TAKEOFF // 最终到达终点
+		} s;
+		bot(int time, int id, stat s = stat::GETIN): time(time), id(id), s(s) {}
+		bool operator>(const bot &b) const {
+			return time > b.time;
+		}
+	};
+
 	using car = pair<int, int>; // 取车time, id
 
 	int T = 0; // 时间
-	queue<int> idleBot; // 入口处空闲机器人队列
-	queue<Pos> idlePark; // 空闲停车场
-	priority_queue<bot, vector<bot>, greater<bot>> busyBot;
-	priority_queue<car, vector<bot>, greater<car>> takeAway; // 取车队列
-	pair<int, int> ret(0, 0); // T, W
+	queue<bot> idleBot; // 入口处空闲机器人队列
+	auto cmp = [this](const Pos &a, const Pos &b)->bool {
+		int distA = startToPark[Pos(a)].size() + parkToEnd[Pos(a)].size();
+		int distB = startToPark[Pos(b)].size() + parkToEnd[Pos(b)].size();
+		if(distA == distB) return startToPark[Pos(a)].size() > startToPark[Pos(b)].size();
+		else return distA > distB;
+		return true;
+	};
 
-	for (int i = 0; i < botNum; ++i) idleBot.push(i); // 入口处空闲机器人队列
+	priority_queue<Pos, vector<Pos>, decltype(cmp)> idlePark(cmp); // 空闲停车场
+	priority_queue<bot, vector<bot>, greater<bot>> busyBot;
+	priority_queue<car, vector<car>, greater<car>> takeAway; // 取车队列
+	ret.first = ret.second = 0; // T, W
+
+	for (int i = 0; i < botNum; ++i) idleBot.push(bot(0, i)); // 入口处空闲机器人队列
 	for (size_t i = 0; i < parks.size(); ++i) idlePark.push(Pos(parks[i]));
 
 	size_t carIdx = 0; // 处理到的汽车
+	// 第一阶段，接车/取车
 	while(carIdx < cars.size()) {
 		Car &curCar = cars[carIdx];
 
 		// 处理停车
 		if(T >= curCar.tIn && T <= curCar.tIn + curCar.t) { // 当前车辆
 			if(! idleBot.empty() && !idlePark.empty()) { // 入口处有空闲机器人
-				int botId = idleBot.front(); idleBot.pop();
-				Pos park = idlePark.front(); idlePark.pop();
+				int botId = idleBot.front().id; idleBot.pop();
+				Pos park = idlePark.top(); idlePark.pop();
 
 				// printf("park: ");
 				// Point(park).show();
 				// puts("");
 
-				busyBot.push(make_pair(T + (startToPark[park].size() + 1)*2 , botId)); // 来回路程*2
+				busyBot.push(bot(T + (startToPark[park].size() + 1)*2 , botId)); // 来回路程*2
 				takeAway.push(make_pair(curCar.tOut, carIdx)); // 取车队列
 
 				ret.second += k * curCar.m * (startToPark[park].size() + parkToEnd[park].size() + 2); // W
@@ -199,16 +221,26 @@ pair<int,int> Garage::schedule(int botNum) { // 核心算法，调度，return <
 				curCar.realTIn = T;
 				curCar.inBot = botId;
 				++carIdx; // 处理下一辆车
+				continue;
 			}
 		} else if(T > curCar.tIn + curCar.t) { // 放弃接车
+			curCar.park = -1;
 			++carIdx; // 处理下一辆车
 			ret.first += p; // 罚时，T2
+			continue;
 		}
 
 		// 检查繁忙机器人
-		if(!busyBot.empty() && T >= busyBot.top().first) {
-			int botId = busyBot.top().second; busyBot.pop();
-			idleBot.push(botId); // 回到起点
+		if(!busyBot.empty() && T >= busyBot.top().time) {
+			int botId = busyBot.top().id;
+			if(busyBot.top().s == bot::stat::TAKEOFF) {
+				busyBot.pop();
+				busyBot.push(bot(T + startToEnd.size() + 1, botId, bot::stat::GETIN)); // 回到起点
+			} else {
+				busyBot.pop();
+				idleBot.push(bot(0, botId)); // 回到起点
+			}
+
 			continue;
 		}
 
@@ -216,47 +248,64 @@ pair<int,int> Garage::schedule(int botNum) { // 核心算法，调度，return <
 		if(! takeAway.empty() && T >= takeAway.top().first) {
 			if(! idleBot.empty()) { // 入口处有空闲机器人
 				int curId = takeAway.top().second; takeAway.pop();
-				int botId = idleBot.front(); idleBot.pop();
+				int botId = idleBot.front().id; idleBot.pop();
 				Car & tcar = cars[curId];
 				Pos park = tcar.park;
 				idlePark.push(park);
-				busyBot.push(make_pair(T + startToPark[park].size() + parkToEnd[park].size() + startToEnd.size() + 3 , botId)); // 运到出口，然后回来
+				busyBot.push(bot(T + startToPark[park].size() + parkToEnd[park].size() + 2 , botId, bot::stat::TAKEOFF)); // 运到出口
 
 				tcar.outBot = botId;
 				tcar.realTOut = T + startToPark[park].size() + 1;
 				ret.first += b * ((tcar.realTIn - tcar.tIn) + (tcar.realTOut + parkToEnd[park].size() + 1 - tcar.tOut)); // T1
+				continue;
 			}
 		}
 
 		++T;
 	}
 
+	// 第二阶段：取车
 	while(! takeAway.empty()) { // 取走剩余车辆
 		// 检查繁忙机器人
-		if(!busyBot.empty() && T >= busyBot.top().first) {
-			int botId = busyBot.top().second; busyBot.pop();
-			idleBot.push(botId); // 回到起点
+		if(!busyBot.empty() && T >= busyBot.top().time) {
+			int botId = busyBot.top().id;
+			if(busyBot.top().s == bot::stat::TAKEOFF) {
+				idleBot.push(bot(0, botId, bot::stat::TAKEOFF)); // 待在终点
+			} else {
+				idleBot.push(bot(0, botId)); // 回到起点
+			}
+			busyBot.pop();
+
 			continue;
 		}
 
 		// 取车
 		if(T >= takeAway.top().first) {
-			if(! idleBot.empty()) { // 入口处有空闲机器人
+			if(! idleBot.empty()) { // 有空闲机器人
 				int curId = takeAway.top().second; takeAway.pop();
-				int botId = idleBot.front(); idleBot.pop();
+				bot curBot = idleBot.front(); idleBot.pop();
+
 				Car & tcar = cars[curId];
 				Pos park = tcar.park;
 				idlePark.push(park);
-				busyBot.push(make_pair(T + startToPark[park].size() + parkToEnd[park].size() + startToEnd.size() + 3 , botId)); // 运到出口，然后回来
 
-				tcar.outBot = botId;
-				tcar.realTOut = T + startToPark[park].size() + 1;
+				if(curBot.s == bot::stat::TAKEOFF) { // 机器人在出口
+					busyBot.push(bot(T + (parkToEnd[park].size() + 1) * 2 , curBot.id, bot::stat::TAKEOFF)); // 运到出口，然后回来
+					tcar.realTOut = T + parkToEnd[park].size() + 1;
+				} else { // 机器人在入口
+					busyBot.push(bot(T + startToPark[park].size() + parkToEnd[park].size() + 2, curBot.id, bot::stat::TAKEOFF));
+					tcar.realTOut = T + startToPark[park].size() + 1;
+				}
+
+				tcar.outBot = curBot.id;
 				ret.first += b * ((tcar.realTIn - tcar.tIn) + (tcar.realTOut + parkToEnd[park].size() + 1 - tcar.tOut)); // T1
+				continue;
 			}
 		}
 		++T;
 	}
-	return ret;
+
+	return a * botNum + ret.first + ret.second;
 }
 
 vector<Pos> Garage::getPath(const Point &s, const Point &e) {
