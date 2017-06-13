@@ -226,7 +226,7 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 	while(carIdx < cars.size()) {
 		Car &curCar = cars[carIdx];
 
-		// 处理停车
+		// 接车，只有第一阶段才有
 		if(T >= curCar.tIn && T <= curCar.tIn + curCar.t) { // 当前车辆
 			if(! idleBot.empty() && !idlePark.empty()) { // 入口处有空闲机器人
 				int botId = idleBot.front().id; idleBot.pop();
@@ -237,7 +237,7 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 				// puts("");
 
 				busyBot.push(bot(T + (startToPark[park].size() + 1)*2 , botId)); // 来回路程*2
-				takeAway.push(make_pair(curCar.tOut, carIdx)); // 取车队列
+				takeAway.push(make_pair(curCar.tOut - (parkToEnd[park].size() + 1), carIdx)); // 取车队列
 
 				ret.second += k * curCar.m * (startToPark[park].size() + parkToEnd[park].size() + 2); // W
 				curCar.park = park;

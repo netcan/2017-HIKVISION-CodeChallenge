@@ -4,6 +4,7 @@ main: main.cpp
 run: main
 	for i in $$(ls cases/*.txt); \
     do\
+		echo "running" $$i "...";\
 		log="$$(echo $$i | sed -r 's/(.*)\.txt/\1\.log/')";\
 		echo `date +'%y/%m/%d %H:%M:%S'` >> $$log;\
         ./main $$i > "$$(echo $$i | sed -r 's/(.*)\.txt/\1\.out/')" 2>> $$log;\
