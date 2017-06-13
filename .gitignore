@@ -1,6 +1,6 @@
 /main
 cases/*.out
-cases100/*.out
+cases/*.log
 cases/Demo.exe
 cases/QtCore4.dll
 cases/QtGui4.dll

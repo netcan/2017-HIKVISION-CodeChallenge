@@ -174,6 +174,16 @@ void Garage::run() {
 
 	// printf("minZ = %d\n", Z);
 	schedule(bestBotNum, ans);
+
+#ifdef netcanMachine
+	// 打印算法结果
+	showData();
+	int q = 0;
+	for(const auto &car: cars) if(car.park == -1) ++q;
+	fprintf(stderr, "minZ:%d, botNum:%d, T:%d(%d+%d), W:%d, acc:%ld/%ld\n", Z, bestBotNum, ans.first, ans.first - p * q, p * q, ans.second, cars.size() - q, cars.size());
+	// 打印结束
+#endif
+
 	showSolution(bestBotNum, ans);
 }
 
@@ -513,16 +523,18 @@ void Garage::loadData() {
 	}
 }
 void Garage::showData() {
-	printf("能耗系数k = %d\n", k);
-	printf("罚时系数p = %d\n", p);
-	printf("机器人系数a = %d\n", a);
-	printf("等待系数b = %d\n", b);
-	printf("w = %d h = %d\n", w, h);
+	fprintf(stderr, "能耗系数k:%d, ", k);
+	fprintf(stderr, "罚时系数p:%d, ", p);
+	fprintf(stderr, "机器人系数a:%d, ", a);
+	fprintf(stderr, "等待系数b:%d\n", b);
+	fprintf(stderr, "w:%d, h:%d\n", w, h);
+	/*
 	for (int i = 0; i < h; ++i) {
 		for (int j = 0; j < w; ++j)
 			printf("%c ", static_cast<char>(Map[i][j]));
 		puts("");
 	}
+	*/
 }
 
 Garage garage; // 只有一个车库
