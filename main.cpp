@@ -22,7 +22,7 @@ struct Point;
 class Car {
 	private:
 		int id; // ID
-		int tIn, tOut; // 申请进入时间点，申请离开时间点
+		int tIn, tOut; // 申请入库时间点，申请出库时间点
 		int t, m; // 最大等待时间，质量
 		Pos park = -1; // 停车点
 		int realTIn = -1, realTOut = -1, inBot = -1, outBot = -1;
@@ -237,7 +237,7 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 				// puts("");
 
 				busyBot.push(bot(T + (startToPark[park].size() + 1)*2 , botId)); // 来回路程*2
-				takeAway.push(make_pair(curCar.tOut - (parkToEnd[park].size() + 1), carIdx)); // 取车队列
+				takeAway.push(make_pair(curCar.tOut - (min(parkToEnd[park].size(), startToPark[park].size()) + 1), carIdx)); // 取车队列，提前取车
 
 				ret.second += k * curCar.m * (startToPark[park].size() + parkToEnd[park].size() + 2); // W
 				curCar.park = park;
