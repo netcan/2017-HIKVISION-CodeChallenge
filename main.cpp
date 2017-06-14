@@ -194,15 +194,15 @@ void Garage::run() {
 }
 
 int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度，return Z
-	// using bot = pair<int, int>; // time, id
-	struct bot {
+	// using Bot = pair<int, int>; // time, id
+	struct Bot {
 		int time, id;
 		enum class stat {
 			GETIN, // 最终到达起点
 			TAKEOFF // 最终到达终点
 		} s;
-		bot(int time, int id, stat s = stat::GETIN): time(time), id(id), s(s) {}
-		bool operator>(const bot &b) const {
+		Bot(int time, int id, stat s = stat::GETIN): time(time), id(id), s(s) {}
+		bool operator>(const Bot &b) const {
 			return time > b.time;
 		}
 	};
@@ -210,27 +210,40 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 	using car = pair<int, int>; // 取车time, id
 
 	int T = 0; // 时间
-	queue<bot> idleBot; // 入口处空闲机器人队列
+	queue<Bot> idleBot; // 入口处空闲机器人队列
 	auto cmp = [this](const Pos &a, const Pos &b)->bool {
 		int distA = startToPark[Pos(a)].size() + parkToEnd[Pos(a)].size();
 		int distB = startToPark[Pos(b)].size() + parkToEnd[Pos(b)].size();
+
+		// if(parkToEnd[Pos(a)].size() == parkToEnd[Pos(b)].size()) return distA > distB;
+		// else return parkToEnd[Pos(a)].size() > parkToEnd[Pos(b)].size();
+
 		if(distA == distB) return parkToEnd[Pos(a)].size() > parkToEnd[Pos(b)].size(); // 停车场到终点的距离越小越好
 		else return distA > distB;
-		return true;
 	};
 
 	priority_queue<Pos, vector<Pos>, decltype(cmp)> idlePark(cmp); // 空闲停车场
-	priority_queue<bot, vector<bot>, greater<bot>> busyBot;
+	priority_queue<Bot, vector<Bot>, greater<Bot>> busyBot;
 	priority_queue<car, vector<car>, greater<car>> takeAway; // 取车队列
 	ret.first = ret.second = 0; // T, W
 
-	for (int i = 0; i < botNum; ++i) idleBot.push(bot(0, i)); // 入口处空闲机器人队列
+	for (int i = 0; i < botNum; ++i) idleBot.push(Bot(0, i)); // 入口处空闲机器人队列
 	for (size_t i = 0; i < parks.size(); ++i) idlePark.push(Pos(parks[i]));
 
 	size_t carIdx = 0; // 处理到的汽车
 	// 第一阶段，接车/取车
 	while(carIdx < cars.size()) {
 		Car &curCar = cars[carIdx];
+		// 检查繁忙机器人
+		if(!busyBot.empty() && T >= busyBot.top().time) {
+			// int botId = busyBot.top().id;
+			Bot bot = busyBot.top();
+			busyBot.pop();
+			if(bot.s == Bot::stat::TAKEOFF)
+				idleBot.push(Bot(0, bot.id, Bot::stat::TAKEOFF)); // 留在终点
+			else idleBot.push(Bot(0, bot.id)); // 回到起点
+			continue;
+		}
 
 		// 接车，只有第一阶段才有
 		if(T > curCar.tIn + curCar.t) { // 放弃接车
@@ -240,7 +253,7 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 			continue;
 		} else if(T >= curCar.tIn) { // 当前车辆
 			if(! idleBot.empty() && !idlePark.empty()) { // 入口处有空闲机器人
-				int botId = idleBot.front().id;
+				// int botId = idleBot.front().id;
 				Pos park = idlePark.top();
 				if((unsigned)p <=
 						b * (T - curCar.tIn + parkToEnd[park].size()) +
@@ -250,57 +263,46 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 					ret.first += p; // 罚时，T2
 					continue;
 				}
+
+				Bot bot = idleBot.front();
 				idleBot.pop();
-				idlePark.pop();
+				if(bot.s == Bot::stat::GETIN) {
+					idlePark.pop();
 
+					busyBot.push(Bot(T + (startToPark[park].size() + 1)*2 , bot.id)); // 来回路程*2
+					takeAway.push(make_pair(curCar.tOut - (max(parkToEnd[park].size(), startToPark[park].size()) + 1), carIdx)); // 取车队列，提前取车
 
-				// printf("park: ");
-				// Point(park).show();
-				// puts("");
-
-				busyBot.push(bot(T + (startToPark[park].size() + 1)*2 , botId)); // 来回路程*2
-				takeAway.push(make_pair(curCar.tOut - (max(parkToEnd[park].size(), startToPark[park].size()) + 1), carIdx)); // 取车队列，提前取车
-
-				ret.second += k * curCar.m * (startToPark[park].size() + parkToEnd[park].size() + 2); // W
-				curCar.park = park;
-				curCar.realTIn = T;
-				curCar.inBot = botId;
-				++carIdx; // 处理下一辆车
+					ret.second += k * curCar.m * (startToPark[park].size() + parkToEnd[park].size() + 2); // W
+					curCar.park = park;
+					curCar.realTIn = T;
+					curCar.inBot = bot.id;
+					++carIdx; // 处理下一辆车
+				} else {
+					busyBot.push(Bot(T + startToEnd.size() + 1, bot.id, Bot::stat::GETIN)); // 回到起点
+				}
 				continue;
 			}
-		}
-		// 检查繁忙机器人
-		if(!busyBot.empty() && T >= busyBot.top().time) {
-			int botId = busyBot.top().id;
-			if(busyBot.top().s == bot::stat::TAKEOFF) {
-				busyBot.pop();
-				busyBot.push(bot(T + startToEnd.size() + 1, botId, bot::stat::GETIN)); // 回到起点
-			} else {
-				busyBot.pop();
-				idleBot.push(bot(0, botId)); // 回到起点
-			}
-
-			continue;
 		}
 
 		// 取车
 		if(! takeAway.empty() && T >= takeAway.top().first) {
-			if(! idleBot.empty()) { // 入口处有空闲机器人
-				int curId = takeAway.top().second; takeAway.pop();
-				int botId = idleBot.front().id; idleBot.pop();
-				Car & tcar = cars[curId];
+			if(! idleBot.empty()) { // 有空闲机器人
+				Car & tcar = cars[takeAway.top().second];
+				Bot bot = idleBot.front();
 				Pos park = tcar.park;
+				idleBot.pop();
 				idlePark.push(park);
+				takeAway.pop();
+				tcar.outBot = bot.id;
 
-				tcar.realTOut = max<int>(T + startToPark[park].size() + 1, tcar.tOut);
-				busyBot.push(bot(tcar.realTOut + parkToEnd[park].size() + 1 , botId, bot::stat::TAKEOFF)); // 运到出口
+				if(bot.s == Bot::stat::GETIN) tcar.realTOut = max<int>(T + startToPark[park].size() + 1, tcar.tOut);
+				else tcar.realTOut = max<int>(T + parkToEnd[park].size() + 1, tcar.tOut);
 
-				tcar.outBot = botId;
+				busyBot.push(Bot(tcar.realTOut + parkToEnd[park].size() + 1 , bot.id, Bot::stat::TAKEOFF)); // 运到出口
 				ret.first += b * ((tcar.realTIn - tcar.tIn) + (tcar.realTOut + parkToEnd[park].size() + 1 - tcar.tOut)); // T1
 				continue;
 			}
 		}
-
 		++T;
 	}
 
@@ -308,12 +310,10 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 	while(! takeAway.empty()) { // 取走剩余车辆
 		// 检查繁忙机器人
 		if(!busyBot.empty() && T >= busyBot.top().time) {
-			int botId = busyBot.top().id;
-			if(busyBot.top().s == bot::stat::TAKEOFF) {
-				idleBot.push(bot(0, botId, bot::stat::TAKEOFF)); // 待在终点
-			} else {
-				idleBot.push(bot(0, botId)); // 回到起点
-			}
+			Bot bot = busyBot.top();
+			if(busyBot.top().s == Bot::stat::TAKEOFF)
+				idleBot.push(Bot(0, bot.id, Bot::stat::TAKEOFF)); // 待在终点
+			else idleBot.push(Bot(0, bot.id)); // 回到起点
 			busyBot.pop();
 
 			continue;
@@ -322,22 +322,19 @@ int Garage::schedule(int botNum, pair<int, int> &ret) { // 核心算法，调度
 		// 取车
 		if(T >= takeAway.top().first) {
 			if(! idleBot.empty()) { // 有空闲机器人
-				int curId = takeAway.top().second; takeAway.pop();
-				bot curBot = idleBot.front(); idleBot.pop();
+				Car & tcar = cars[takeAway.top().second]; takeAway.pop();
+				Bot bot = idleBot.front(); idleBot.pop();
 
-				Car & tcar = cars[curId];
 				Pos park = tcar.park;
 				idlePark.push(park);
 
-				if(curBot.s == bot::stat::TAKEOFF) { // 机器人在出口
+				if(bot.s == Bot::stat::TAKEOFF)  // 机器人在出口
 					tcar.realTOut = max<int>(T + parkToEnd[park].size() + 1, tcar.tOut);
-					busyBot.push(bot(tcar.realTOut + parkToEnd[park].size() + 1, curBot.id, bot::stat::TAKEOFF)); // 运到出口，然后回来
-				} else { // 机器人在入口
+				else  // 机器人在入口
 					tcar.realTOut = max<int>(T + startToPark[park].size() + 1, tcar.tOut);
-					busyBot.push(bot(tcar.realTOut + parkToEnd[park].size() + 1, curBot.id, bot::stat::TAKEOFF));
-				}
 
-				tcar.outBot = curBot.id;
+				busyBot.push(Bot(tcar.realTOut + parkToEnd[park].size() + 1, bot.id, Bot::stat::TAKEOFF)); // 运到出口，然后回来
+				tcar.outBot = bot.id;
 				ret.first += b * ((tcar.realTIn - tcar.tIn) + (tcar.realTOut + parkToEnd[park].size() + 1 - tcar.tOut)); // T1
 				continue;
 			}
@@ -544,7 +541,8 @@ void Garage::showData() {
 	fprintf(stderr, "罚时系数p:%d, ", p);
 	fprintf(stderr, "机器人系数a:%d, ", a);
 	fprintf(stderr, "等待系数b:%d\n", b);
-	fprintf(stderr, "w:%d, h:%d\n", w, h);
+	fprintf(stderr, "w:%d, h:%d, ", w, h);
+	fprintf(stderr, "park: %ld\n", parks.size());
 	/*
 	for (int i = 0; i < h; ++i) {
 		for (int j = 0; j < w; ++j)
